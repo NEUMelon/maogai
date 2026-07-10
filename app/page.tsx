@@ -1,0 +1,377 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import data from "./data/questions.json";
+
+type QuestionType = "single" | "multiple" | "judge" | "short";
+type TypeFilter = "all" | QuestionType;
+type Question = (typeof data.questions)[number];
+type Progress = {
+  answered: string[];
+  correct: string[];
+  wrong: string[];
+  starred: string[];
+};
+
+const EMPTY_PROGRESS: Progress = { answered: [], correct: [], wrong: [], starred: [] };
+
+const TYPE_NAMES: Record<QuestionType, string> = {
+  single: "单选题",
+  multiple: "多选题",
+  judge: "判断题",
+  short: "简答题",
+};
+
+const FILTERS: { key: TypeFilter; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "single", label: "单选" },
+  { key: "multiple", label: "多选" },
+  { key: "judge", label: "判断" },
+  { key: "short", label: "简答" },
+];
+
+function sameAnswer(left: string[], right: string[]) {
+  return [...left].sort().join("") === [...right].sort().join("");
+}
+
+function updateList(list: string[], id: string, include: boolean) {
+  const next = new Set(list);
+  if (include) next.add(id);
+  else next.delete(id);
+  return [...next];
+}
+
+function shuffle<T>(items: T[]) {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const random = Math.floor(Math.random() * (index + 1));
+    [next[index], next[random]] = [next[random], next[index]];
+  }
+  return next;
+}
+
+export default function Home() {
+  const [bank, setBank] = useState<"chapter" | "master">("chapter");
+  const [section, setSection] = useState("intro");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [query, setQuery] = useState("");
+  const [order, setOrder] = useState<string[]>([]);
+  const [current, setCurrent] = useState(0);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [submitted, setSubmitted] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("maogai-progress-v1");
+      // Loading persisted study state is the purpose of this client-only synchronization.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (saved) setProgress({ ...EMPTY_PROGRESS, ...JSON.parse(saved) });
+    } catch {
+      // A private browsing policy can disable storage; the app still works in memory.
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem("maogai-progress-v1", JSON.stringify(progress));
+    } catch {
+      // Keep the study session usable even when storage is unavailable.
+    }
+  }, [hydrated, progress]);
+
+  const baseQuestions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return (data.questions as Question[]).filter((question) => {
+      if (question.bank !== bank) return false;
+      if (bank === "chapter" && question.section !== section) return false;
+      if (typeFilter !== "all" && question.type !== typeFilter) return false;
+      if (normalizedQuery && !question.prompt.toLowerCase().includes(normalizedQuery)) return false;
+      return true;
+    });
+  }, [bank, section, typeFilter, query]);
+
+  const questions = useMemo(() => {
+    if (!order.length) return baseQuestions;
+    const map = new Map(baseQuestions.map((question) => [question.id, question]));
+    if (order.length !== baseQuestions.length || order.some((id) => !map.has(id))) return baseQuestions;
+    return order.map((id) => map.get(id)).filter(Boolean) as Question[];
+  }, [baseQuestions, order]);
+
+  const question = questions[current];
+  const isStarred = question ? progress.starred.includes(question.id) : false;
+  const isCorrect = question && question.type !== "short" ? sameAnswer(selected, question.answer) : false;
+  const answeredHere = questions.filter((item) => progress.answered.includes(item.id)).length;
+  const sectionCorrect = questions.filter((item) => progress.correct.includes(item.id)).length;
+  const accuracy = answeredHere ? Math.round((sectionCorrect / answeredHere) * 100) : 0;
+
+  const resetQuestion = useCallback((nextIndex: number) => {
+    setCurrent(nextIndex);
+    setSelected([]);
+    setSubmitted(false);
+    setRevealed(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const goNext = useCallback(() => {
+    if (!questions.length) return;
+    resetQuestion((current + 1) % questions.length);
+  }, [current, questions.length, resetQuestion]);
+
+  const recordResult = useCallback((correct: boolean) => {
+    if (!question) return;
+    setProgress((previous) => ({
+      ...previous,
+      answered: updateList(previous.answered, question.id, true),
+      correct: updateList(previous.correct, question.id, correct),
+      wrong: updateList(previous.wrong, question.id, !correct),
+    }));
+  }, [question]);
+
+  const submit = useCallback(() => {
+    if (!question || question.type === "short" || !selected.length) return;
+    setSubmitted(true);
+    recordResult(sameAnswer(selected, question.answer));
+  }, [question, recordResult, selected]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!question || event.target instanceof HTMLInputElement) return;
+      const optionIndex = Number(event.key) - 1;
+      if (!submitted && optionIndex >= 0 && optionIndex < question.options.length) {
+        const key = question.options[optionIndex].key;
+        if (question.type === "multiple") {
+          setSelected((previous) => updateList(previous, key, !previous.includes(key)));
+        } else if (question.type !== "short") {
+          setSelected([key]);
+        }
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        if (submitted || (question.type === "short" && revealed)) goNext();
+        else if (question.type === "short") setRevealed(true);
+        else submit();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [goNext, question, revealed, submit, submitted]);
+
+  function chooseOption(key: string) {
+    if (!question || submitted || question.type === "short") return;
+    if (question.type === "multiple") {
+      setSelected((previous) => updateList(previous, key, !previous.includes(key)));
+    } else {
+      setSelected([key]);
+    }
+  }
+
+  function restartView() {
+    setOrder([]);
+    setCurrent(0);
+    setSelected([]);
+    setSubmitted(false);
+    setRevealed(false);
+  }
+
+  function changeBank(nextBank: "chapter" | "master") {
+    restartView();
+    setBank(nextBank);
+    setTypeFilter("all");
+    setQuery("");
+    setSidebarOpen(false);
+  }
+
+  function toggleStar() {
+    if (!question) return;
+    setProgress((previous) => ({
+      ...previous,
+      starred: updateList(previous.starred, question.id, !previous.starred.includes(question.id)),
+    }));
+  }
+
+  function resetProgress() {
+    if (window.confirm("确定清空所有作答记录和收藏吗？此操作无法撤销。")) {
+      setProgress(EMPTY_PROGRESS);
+    }
+  }
+
+  const currentChapter = data.chapters.find((chapter) => chapter.id === section);
+  const heading = bank === "master" ? "综合大题库" : `${currentChapter?.label} · ${currentChapter?.title}`;
+
+  return (
+    <main className="app-shell">
+      <button className="mobile-menu" aria-label="打开题库目录" onClick={() => setSidebarOpen(true)}>目录</button>
+      {sidebarOpen && <button className="sidebar-scrim" aria-label="关闭题库目录" onClick={() => setSidebarOpen(false)} />}
+
+      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
+        <div className="brand-row">
+          <div className="brand-mark" aria-hidden="true">知</div>
+          <div>
+            <div className="brand-name">知行题室</div>
+            <div className="brand-subtitle">毛概 · 2023 版</div>
+          </div>
+          <button className="sidebar-close" aria-label="关闭题库目录" onClick={() => setSidebarOpen(false)}>×</button>
+        </div>
+
+        <div className="bank-switch" aria-label="选择题库">
+          <button className={bank === "chapter" ? "active" : ""} onClick={() => changeBank("chapter")}>章节练习</button>
+          <button className={bank === "master" ? "active" : ""} onClick={() => changeBank("master")}>综合题库</button>
+        </div>
+
+        <label className="search-box">
+          <span aria-hidden="true">⌕</span>
+          <input value={query} onChange={(event) => { restartView(); setQuery(event.target.value); }} placeholder="搜索题目" aria-label="搜索题目" />
+          {query && <button onClick={() => { restartView(); setQuery(""); }} aria-label="清空搜索">×</button>}
+        </label>
+
+        <nav className="chapter-nav" aria-label="章节目录">
+          <div className="nav-label">{bank === "chapter" ? "课程章节" : "题库概览"}</div>
+          {bank === "chapter" ? data.chapters.map((chapter) => {
+            const completed = (data.questions as Question[]).filter((item) => item.section === chapter.id && progress.answered.includes(item.id)).length;
+            return (
+              <button key={chapter.id} className={section === chapter.id ? "chapter-active" : ""} onClick={() => { restartView(); setSection(chapter.id); setSidebarOpen(false); }}>
+                <span className="chapter-copy"><strong>{chapter.label}</strong><small>{chapter.title}</small></span>
+                <span className="chapter-count">{completed}/{chapter.count}</span>
+              </button>
+            );
+          }) : (
+            <div className="master-summary">
+              <div><strong>{data.stats.masterQuestions}</strong><span>道去重好题</span></div>
+              <div><strong>{progress.starred.length}</strong><span>道已收藏</span></div>
+              <p>来自总题库的有效标准答案。重复题已合并，原文缺失答案的题目未收录。</p>
+            </div>
+          )}
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="mini-stat"><span>累计练习</span><strong>{progress.answered.length} 题</strong></div>
+          <div className="mini-stat"><span>答对</span><strong>{progress.correct.length} 题</strong></div>
+          <button className="reset-link" onClick={resetProgress}>清空学习记录</button>
+        </div>
+      </aside>
+
+      <section className="workspace">
+        <header className="topbar">
+          <div>
+            <div className="eyebrow">{bank === "master" ? "MASTER QUESTION BANK" : "CHAPTER PRACTICE"}</div>
+            <h1>{heading}</h1>
+          </div>
+          <div className="top-actions">
+            <button className="soft-button" onClick={() => { setOrder(shuffle(questions.map((item) => item.id))); resetQuestion(0); }} disabled={!questions.length}>随机练习</button>
+            <button className={`star-button ${isStarred ? "starred" : ""}`} onClick={toggleStar} disabled={!question} aria-label={isStarred ? "取消收藏" : "收藏本题"}>{isStarred ? "★" : "☆"}</button>
+          </div>
+        </header>
+
+        <div className="filter-row" aria-label="题型筛选">
+          {FILTERS.filter((filter) => filter.key !== "judge" || bank === "master").map((filter) => (
+            <button key={filter.key} className={typeFilter === filter.key ? "filter-active" : ""} onClick={() => { restartView(); setTypeFilter(filter.key); }}>{filter.label}</button>
+          ))}
+        </div>
+
+        <div className="study-grid">
+          <section className="question-panel">
+            {question ? (
+              <>
+                <div className="question-meta">
+                  <span className={`type-badge type-${question.type}`}>{TYPE_NAMES[question.type as QuestionType]}</span>
+                  <span>第 {current + 1} / {questions.length} 题</span>
+                  {question.occurrences && question.occurrences > 1 ? <span>题库中出现 {question.occurrences} 次</span> : null}
+                </div>
+                <div className="question-progress" aria-hidden="true"><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div>
+                <h2>{question.prompt}</h2>
+
+                {question.type === "short" ? (
+                  <div className="short-answer-area">
+                    {!revealed ? (
+                      <div className="recall-prompt">
+                        <div className="recall-lines" aria-hidden="true"><span /><span /><span /><span /></div>
+                        <p>先在心里组织答案，再查看参考要点。</p>
+                        <button className="primary-button" onClick={() => setRevealed(true)}>查看参考答案</button>
+                      </div>
+                    ) : (
+                      <div className="answer-reveal">
+                        <div className="answer-label">参考答案</div>
+                        <p>{question.explanation}</p>
+                        <div className="self-check">
+                          <span>这道题掌握了吗？</span>
+                          <button onClick={() => { recordResult(false); goNext(); }}>还需巩固</button>
+                          <button className="mastered" onClick={() => { recordResult(true); goNext(); }}>已经掌握</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="options-list" role="group" aria-label="答案选项">
+                    {question.options.map((option, optionIndex) => {
+                      const checked = selected.includes(option.key);
+                      const correctOption = submitted && question.answer.includes(option.key);
+                      const wrongOption = submitted && checked && !question.answer.includes(option.key);
+                      return (
+                        <button key={option.key} className={`option ${checked ? "option-selected" : ""} ${correctOption ? "option-correct" : ""} ${wrongOption ? "option-wrong" : ""}`} onClick={() => chooseOption(option.key)} disabled={submitted}>
+                          <span className="option-key">{option.key}</span>
+                          <span className="option-text">{option.text}</span>
+                          <span className="shortcut">{optionIndex + 1}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {submitted && question.type !== "short" && (
+                  <div className={`feedback ${isCorrect ? "feedback-correct" : "feedback-wrong"}`} role="status">
+                    <div className="feedback-icon">{isCorrect ? "✓" : "×"}</div>
+                    <div>
+                      <strong>{isCorrect ? "回答正确" : "再想一想"}</strong>
+                      <p>标准答案：{question.answer.join("、")} · {question.answer.map((key) => question.options.find((option) => option.key === key)?.text).filter(Boolean).join("；")}</p>
+                    </div>
+                  </div>
+                )}
+
+                <footer className="question-footer">
+                  <button className="previous-button" onClick={() => resetQuestion((current - 1 + questions.length) % questions.length)}>上一题</button>
+                  <div className="keyboard-hint">数字键选择 · Enter 提交</div>
+                  {question.type !== "short" && (
+                    submitted ? <button className="primary-button" onClick={goNext}>下一题</button> : <button className="primary-button" onClick={submit} disabled={!selected.length}>提交答案</button>
+                  )}
+                </footer>
+
+                <details className="source-note">
+                  <summary>题目来源与校验</summary>
+                  <p>{question.source}。答案按原题库标准答案录入，并通过选项完整性与答案指向检查。</p>
+                </details>
+              </>
+            ) : (
+              <div className="empty-state">
+                <div>没有找到匹配的题目</div>
+                <p>试试清空搜索或切换题型。</p>
+                <button className="primary-button" onClick={() => { restartView(); setQuery(""); setTypeFilter("all"); }}>显示全部题目</button>
+              </div>
+            )}
+          </section>
+
+          <aside className="session-panel">
+            <div className="session-heading"><span>本轮进度</span><strong>{answeredHere}/{questions.length}</strong></div>
+            <div className="donut" style={{ "--progress": `${accuracy * 3.6}deg` } as React.CSSProperties}>
+              <div><strong>{accuracy}%</strong><span>正确率</span></div>
+            </div>
+            <div className="session-stats">
+              <div><span className="dot dot-correct" />答对<strong>{sectionCorrect}</strong></div>
+              <div><span className="dot dot-wrong" />待巩固<strong>{questions.filter((item) => progress.wrong.includes(item.id)).length}</strong></div>
+              <div><span className="dot dot-neutral" />未作答<strong>{Math.max(questions.length - answeredHere, 0)}</strong></div>
+            </div>
+            <div className="study-note">
+              <div className="note-number">01</div>
+              <p>先独立作答，再看标准答案。错题会保留在“待巩固”中，答对后自动移除。</p>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </main>
+  );
+}
