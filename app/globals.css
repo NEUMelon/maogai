@@ -102,11 +102,15 @@ button { color: inherit; }
 .eyebrow { color: var(--coral); font-size: 9px; font-weight: 750; letter-spacing: .2em; margin-bottom: 7px; }
 .topbar h1 { margin: 0; font: 700 clamp(21px, 2.2vw, 31px)/1.2 var(--serif); letter-spacing: -.02em; }
 .top-actions { display: flex; align-items: center; gap: 8px; }
-.soft-button, .star-button { height: 38px; border: 1px solid var(--line); background: rgba(255,253,248,.75); border-radius: 9px; cursor: pointer; }
+.soft-button, .star-button, .annotation-button { height: 38px; border: 1px solid var(--line); background: rgba(255,253,248,.75); border-radius: 9px; cursor: pointer; }
 .soft-button { padding: 0 16px; font-size: 12px; }
+.annotation-button { padding: 0 12px; display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.annotation-button > span { color: var(--coral); font-size: 16px; line-height: 1; }
+.annotation-button:hover, .annotation-button.annotation-button-active { border-color: #d9ab98; background: var(--coral-soft); color: var(--coral-dark); }
+.annotation-button.annotation-button-saved::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--coral); }
 .star-button { width: 40px; font-size: 20px; }
 .star-button.starred { color: var(--coral); background: var(--coral-soft); border-color: #e4bba9; }
-.soft-button:disabled, .star-button:disabled { opacity: .45; cursor: not-allowed; }
+.soft-button:disabled, .star-button:disabled, .annotation-button:disabled { opacity: .45; cursor: not-allowed; }
 
 .filter-row { padding: 16px clamp(30px, 5vw, 74px) 0; display: flex; gap: 7px; overflow-x: auto; }
 .filter-row button { border: 1px solid transparent; background: transparent; border-radius: 999px; padding: 7px 14px; color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
@@ -190,6 +194,20 @@ button { color: inherit; }
 .study-note { margin-top: 24px; display: grid; grid-template-columns: 28px 1fr; gap: 11px; }
 .note-number { color: var(--coral); font: 700 14px var(--serif); }
 .study-note p { margin: 0; color: var(--muted); font: 11px/1.75 var(--serif); }
+
+.annotation-panel { padding: 20px; border: 1px solid #d9d2c7; border-radius: 15px; background: rgba(255,253,248,.82); box-shadow: 0 12px 38px rgba(56,48,36,.06); }
+.annotation-heading { display: flex; align-items: flex-start; justify-content: space-between; }
+.annotation-heading > div { display: flex; flex-direction: column; gap: 4px; }
+.annotation-heading span { color: var(--coral); font-size: 8px; font-weight: 800; letter-spacing: .18em; }
+.annotation-heading strong { font: 700 19px var(--serif); }
+.annotation-heading > button { width: 29px; height: 29px; border: 1px solid var(--line); border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; }
+.annotation-context { margin: 17px 0 9px; color: var(--muted); font-size: 10px; }
+.annotation-panel textarea { width: 100%; min-height: 280px; resize: vertical; padding: 14px; border: 1px solid #dcd5ca; border-radius: 11px; outline: 0; background: #fffcf7; color: var(--ink); font: 12px/1.8 var(--sans); }
+.annotation-panel textarea:focus { border-color: #c9a08f; box-shadow: 0 0 0 3px rgba(201,100,66,.08); }
+.annotation-panel textarea::placeholder { color: #aaa398; }
+.annotation-footer { min-height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #9a9388; font-size: 8px; }
+.annotation-footer button { border: 0; background: transparent; color: #a35b47; cursor: pointer; font-size: 9px; }
+.annotation-tip { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line-soft); color: var(--muted); font: 10px/1.65 var(--serif); }
 
 .empty-state { min-height: 470px; display: grid; place-content: center; justify-items: center; text-align: center; }
 .empty-state > div { font: 700 24px var(--serif); }
@@ -285,6 +303,7 @@ button { color: inherit; }
   .eyebrow { margin-top: 3px; }
   .topbar h1 { max-width: 60vw; font-size: 18px; }
   .soft-button { display: none; }
+  .annotation-button { padding: 0 9px; }
   .filter-row { padding: 13px 15px 0; }
   .study-grid { display: block; padding: 16px 12px 48px; }
   .question-panel { min-height: auto; padding: 22px 17px; border-radius: 14px; }
@@ -298,6 +317,8 @@ button { color: inherit; }
   .question-footer { grid-template-columns: 1fr 1fr; }
   .keyboard-hint { display: none; }
   .session-panel { position: static; margin-top: 28px; padding: 0 18px; }
+  .session-panel.annotation-panel { padding: 19px 17px; }
+  .annotation-panel textarea { min-height: 190px; }
   .donut { width: 116px; height: 116px; }
   .self-check { align-items: stretch; flex-wrap: wrap; }
   .self-check span { flex-basis: 100%; }

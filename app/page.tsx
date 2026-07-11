@@ -11,9 +11,10 @@ type Progress = {
   correct: string[];
   wrong: string[];
   starred: string[];
+  notes: Record<string, string>;
 };
 
-const EMPTY_PROGRESS: Progress = { answered: [], correct: [], wrong: [], starred: [] };
+const EMPTY_PROGRESS: Progress = { answered: [], correct: [], wrong: [], starred: [], notes: {} };
 
 const TYPE_NAMES: Record<QuestionType, string> = {
   single: "单选题",
@@ -66,6 +67,7 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   const [favoriteMode, setFavoriteMode] = useState(false);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
+  const [annotationOpen, setAnnotationOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -244,8 +246,26 @@ export default function Home() {
   }
 
   function resetProgress() {
-    if (window.confirm("确定清空所有作答记录和收藏吗？此操作无法撤销。")) {
+    if (window.confirm("确定清空所有作答记录、收藏和批注吗？此操作无法撤销。")) {
       setProgress(EMPTY_PROGRESS);
+    }
+  }
+
+  function updateAnnotation(value: string) {
+    if (!question) return;
+    setProgress((previous) => {
+      const notes = { ...previous.notes };
+      if (value.trim()) notes[question.id] = value;
+      else delete notes[question.id];
+      return { ...previous, notes };
+    });
+  }
+
+  function toggleAnnotation() {
+    const opening = !annotationOpen;
+    setAnnotationOpen(opening);
+    if (opening && window.matchMedia("(max-width: 760px)").matches) {
+      window.setTimeout(() => document.getElementById("annotation-panel")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     }
   }
 
@@ -364,6 +384,9 @@ export default function Home() {
           </div>
           <div className="top-actions">
             <button className="soft-button" onClick={() => { setOrder(shuffle(questions.map((item) => item.id))); resetQuestion(0); }} disabled={!questions.length}>随机练习</button>
+            <button className={`annotation-button ${annotationOpen ? "annotation-button-active" : ""} ${question && progress.notes[question.id] ? "annotation-button-saved" : ""}`} onClick={toggleAnnotation} disabled={!question} aria-expanded={annotationOpen}>
+              <span aria-hidden="true">✎</span>{question && progress.notes[question.id] ? "查看批注" : "写批注"}
+            </button>
             <button className={`star-button ${isStarred ? "starred" : ""}`} onClick={toggleStar} disabled={!question} aria-label={isStarred ? "取消收藏" : "收藏本题"}>{isStarred ? "★" : "☆"}</button>
           </div>
         </header>
@@ -477,20 +500,45 @@ export default function Home() {
             )}
           </section>
 
-          <aside className="session-panel">
-            <div className="session-heading"><span>本轮进度</span><strong>{answeredHere}/{questions.length}</strong></div>
-            <div className="donut" style={{ "--progress": `${accuracy * 3.6}deg` } as React.CSSProperties}>
-              <div><strong>{accuracy}%</strong><span>正确率</span></div>
-            </div>
-            <div className="session-stats">
-              <div><span className="dot dot-correct" />答对<strong>{sectionCorrect}</strong></div>
-              <div><span className="dot dot-wrong" />待巩固<strong>{questions.filter((item) => progress.wrong.includes(item.id)).length}</strong></div>
-              <div><span className="dot dot-neutral" />未作答<strong>{Math.max(questions.length - answeredHere, 0)}</strong></div>
-            </div>
-            <div className="study-note">
-              <div className="note-number">01</div>
-              <p>先独立作答，再看标准答案。错题会保留在“待巩固”中，答对后自动移除。</p>
-            </div>
+          <aside className={`session-panel ${annotationOpen && question ? "annotation-panel" : ""}`} id="annotation-panel">
+            {annotationOpen && question ? (
+              <>
+                <div className="annotation-heading">
+                  <div><span>PERSONAL NOTE</span><strong>本题批注</strong></div>
+                  <button onClick={() => setAnnotationOpen(false)} aria-label="关闭批注">×</button>
+                </div>
+                <div className="annotation-context">第 {current + 1} 题 · {TYPE_NAMES[question.type as QuestionType]}</div>
+                <textarea
+                  value={progress.notes[question.id] ?? ""}
+                  onChange={(event) => updateAnnotation(event.target.value)}
+                  placeholder="记下易错点、解题思路或需要复习的知识……"
+                  aria-label="本题批注内容"
+                  maxLength={2000}
+                  autoFocus
+                />
+                <div className="annotation-footer">
+                  <span>自动保存 · {(progress.notes[question.id] ?? "").length}/2000</span>
+                  {progress.notes[question.id] ? <button onClick={() => updateAnnotation("")}>清空批注</button> : null}
+                </div>
+                <p className="annotation-tip">批注只保存在当前浏览器，不会上传，也不会遮挡题目区域。</p>
+              </>
+            ) : (
+              <>
+                <div className="session-heading"><span>本轮进度</span><strong>{answeredHere}/{questions.length}</strong></div>
+                <div className="donut" style={{ "--progress": `${accuracy * 3.6}deg` } as React.CSSProperties}>
+                  <div><strong>{accuracy}%</strong><span>正确率</span></div>
+                </div>
+                <div className="session-stats">
+                  <div><span className="dot dot-correct" />答对<strong>{sectionCorrect}</strong></div>
+                  <div><span className="dot dot-wrong" />待巩固<strong>{questions.filter((item) => progress.wrong.includes(item.id)).length}</strong></div>
+                  <div><span className="dot dot-neutral" />未作答<strong>{Math.max(questions.length - answeredHere, 0)}</strong></div>
+                </div>
+                <div className="study-note">
+                  <div className="note-number">01</div>
+                  <p>先独立作答，再看标准答案。错题会保留在“待巩固”中，答对后自动移除。</p>
+                </div>
+              </>
+            )}
           </aside>
         </div>
       </section>
