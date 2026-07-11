@@ -24,7 +24,12 @@ test("question data is complete and internally consistent", async () => {
   assert.equal(data.stats.daiQuestions, 599);
   assert.equal(data.stats.totalQuestions, 1407);
   assert.equal(data.chapters.length, 9);
+  assert.equal(data.xiaoChapters.length, 9);
   assert.equal(data.questions.length, 1407);
+
+  const xiaoCounts = new Map(data.xiaoChapters.map((chapter) => [chapter.id, chapter.count]));
+  assert.deepEqual([...xiaoCounts.values()], [8, 18, 48, 30, 15, 6, 13, 7, 4]);
+  assert.equal([...xiaoCounts.values()].reduce((sum, count) => sum + count, 0), 149);
 
   const ids = new Set();
   for (const question of data.questions) {
@@ -38,7 +43,16 @@ test("question data is complete and internally consistent", async () => {
     if (question.type === "judge") assert.deepEqual([...optionKeys], ["A", "B"]);
     for (const answer of question.answer) assert.ok(optionKeys.has(answer), `invalid answer ${answer} for ${question.id}`);
     if (question.type === "short") assert.ok(question.explanation.trim(), `missing short answer for ${question.id}`);
+    if (question.bank === "xiao") assert.ok(xiaoCounts.has(question.section), `unknown Xiao chapter for ${question.id}`);
   }
+});
+
+test("practice UI includes favorites and direct question navigation", async () => {
+  const source = await readFile(new URL("app/page.tsx", root), "utf8");
+  assert.match(source, /收藏题目/);
+  assert.match(source, /选择题号/);
+  assert.match(source, /questions\.map\(\(item, index\)/);
+  assert.match(source, /setFavoriteMode\(true\)/);
 });
 
 test("server renders the finished Chinese practice app", async () => {

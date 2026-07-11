@@ -64,6 +64,8 @@ export default function Home() {
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [favoriteMode, setFavoriteMode] = useState(false);
+  const [navigatorOpen, setNavigatorOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -89,15 +91,22 @@ export default function Home() {
   const baseQuestions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return (data.questions as Question[]).filter((question) => {
-      if (bank === "chapter" || bank === "master") {
-        if (question.bank !== bank) return false;
-      } else if (question.bank !== bank) return false;
-      if ((bank === "chapter" || bank === "dai") && question.section !== section) return false;
+      const inCurrentLibrary = bank === "chapter" || bank === "master"
+        ? question.bank === "chapter" || question.bank === "master"
+        : question.bank === bank;
+      if (favoriteMode) {
+        if (!inCurrentLibrary || !progress.starred.includes(question.id)) return false;
+      } else {
+        if (bank === "chapter" || bank === "master") {
+          if (question.bank !== bank) return false;
+        } else if (question.bank !== bank) return false;
+        if ((bank === "chapter" || bank === "xiao" || bank === "dai") && question.section !== section) return false;
+      }
       if (typeFilter !== "all" && question.type !== typeFilter) return false;
       if (normalizedQuery && !question.prompt.toLowerCase().includes(normalizedQuery)) return false;
       return true;
     });
-  }, [bank, section, typeFilter, query]);
+  }, [bank, section, typeFilter, query, favoriteMode, progress.starred]);
 
   const questions = useMemo(() => {
     if (!order.length) return baseQuestions;
@@ -118,6 +127,7 @@ export default function Home() {
     setSelected([]);
     setSubmitted(false);
     setRevealed(false);
+    setNavigatorOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -144,6 +154,10 @@ export default function Home() {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (navigatorOpen) {
+        if (event.key === "Escape") setNavigatorOpen(false);
+        return;
+      }
       if (!question || event.target instanceof HTMLInputElement) return;
       const optionIndex = Number(event.key) - 1;
       if (!submitted && optionIndex >= 0 && optionIndex < question.options.length) {
@@ -163,7 +177,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goNext, question, revealed, submit, submitted]);
+  }, [goNext, navigatorOpen, question, revealed, submit, submitted]);
 
   function chooseOption(key: string) {
     if (!question || submitted || question.type === "short") return;
@@ -180,6 +194,7 @@ export default function Home() {
     setSelected([]);
     setSubmitted(false);
     setRevealed(false);
+    setNavigatorOpen(false);
   }
 
   function changeBank(nextBank: "chapter" | "master") {
@@ -188,18 +203,20 @@ export default function Home() {
     setTypeFilter("all");
     setQuery("");
     setSidebarOpen(false);
+    setFavoriteMode(false);
   }
 
   function enterLibrary(library: "core" | "xiao" | "dai") {
     restartView();
     setTypeFilter("all");
     setQuery("");
+    setFavoriteMode(false);
     if (library === "core") {
       setBank("chapter");
       setSection("intro");
     } else if (library === "xiao") {
       setBank("xiao");
-      setSection("xiao");
+      setSection("xiao-intro");
     } else {
       setBank("dai");
       setSection("dai-intro");
@@ -207,8 +224,19 @@ export default function Home() {
     setView("practice");
   }
 
+  function openFavorites() {
+    restartView();
+    setFavoriteMode(true);
+    setTypeFilter("all");
+    setQuery("");
+    setSidebarOpen(false);
+  }
+
   function toggleStar() {
     if (!question) return;
+    if (favoriteMode && isStarred) {
+      setCurrent((previous) => Math.max(0, Math.min(previous, questions.length - 2)));
+    }
     setProgress((previous) => ({
       ...previous,
       starred: updateList(previous.starred, question.id, !previous.starred.includes(question.id)),
@@ -221,9 +249,13 @@ export default function Home() {
     }
   }
 
-  const chapterList = bank === "chapter" ? data.chapters : bank === "dai" ? data.daiChapters : [];
+  const libraryId = bank === "chapter" || bank === "master" ? "core" : bank;
+  const libraryName = libraryId === "core" ? "课程题库" : libraryId === "xiao" ? "肖1000" : "戴题库";
+  const libraryQuestionIds = new Set((data.questions as Question[]).filter((item) => libraryId === "core" ? item.bank === "chapter" || item.bank === "master" : item.bank === libraryId).map((item) => item.id));
+  const libraryStarredCount = progress.starred.filter((id) => libraryQuestionIds.has(id)).length;
+  const chapterList = bank === "chapter" ? data.chapters : bank === "xiao" ? data.xiaoChapters : bank === "dai" ? data.daiChapters : [];
   const currentChapter = chapterList.find((chapter) => chapter.id === section);
-  const heading = bank === "master" ? "综合大题库" : bank === "xiao" ? "肖1000 · 精选题" : `${currentChapter?.label} · ${currentChapter?.title}`;
+  const heading = favoriteMode ? `收藏题目 · ${libraryName}` : bank === "master" ? "综合大题库" : `${currentChapter?.label} · ${currentChapter?.title}`;
 
   if (view === "home") {
     return (
@@ -292,21 +324,27 @@ export default function Home() {
           {query && <button onClick={() => { restartView(); setQuery(""); }} aria-label="清空搜索">×</button>}
         </label>
 
+        <button className={`favorite-entry ${favoriteMode ? "favorite-entry-active" : ""}`} onClick={openFavorites}>
+          <span aria-hidden="true">★</span>
+          <strong>收藏题目</strong>
+          <em>{libraryStarredCount}</em>
+        </button>
+
         <nav className="chapter-nav" aria-label="章节目录">
-          <div className="nav-label">{chapterList.length ? "课程章节" : "题库概览"}</div>
-          {chapterList.length ? chapterList.map((chapter) => {
+          <div className="nav-label">{favoriteMode ? "收藏练习" : chapterList.length ? "课程章节" : "题库概览"}</div>
+          {!favoriteMode && chapterList.length ? chapterList.map((chapter) => {
             const completed = (data.questions as Question[]).filter((item) => item.section === chapter.id && progress.answered.includes(item.id)).length;
             return (
-              <button key={chapter.id} className={section === chapter.id ? "chapter-active" : ""} onClick={() => { restartView(); setSection(chapter.id); setSidebarOpen(false); }}>
+              <button key={chapter.id} className={section === chapter.id ? "chapter-active" : ""} onClick={() => { restartView(); setFavoriteMode(false); setSection(chapter.id); setSidebarOpen(false); }}>
                 <span className="chapter-copy"><strong>{chapter.label}</strong><small>{chapter.title}</small></span>
                 <span className="chapter-count">{completed}/{chapter.count}</span>
               </button>
             );
           }) : (
             <div className="master-summary">
-              <div><strong>{bank === "master" ? data.stats.masterQuestions : data.stats.xiaoQuestions}</strong><span>道已校验题目</span></div>
-              <div><strong>{progress.starred.length}</strong><span>道已收藏</span></div>
-              <p>{bank === "master" ? "来自综合题库的有效标准答案。重复题已合并，原文缺失答案的题目未收录。" : "来自肖1000题目与答案文件，单选、多选均已完成答案对应检查。"}</p>
+              <div><strong>{favoriteMode ? libraryStarredCount : bank === "master" ? data.stats.masterQuestions : data.stats.xiaoQuestions}</strong><span>{favoriteMode ? "道收藏题目" : "道已校验题目"}</span></div>
+              <div><strong>{progress.starred.length}</strong><span>全站收藏</span></div>
+              <p>{favoriteMode ? "这里汇集当前题库中收藏过的题目。练习时仍可点击右上角星标，随时取消收藏。" : bank === "master" ? "来自综合题库的有效标准答案。重复题已合并，原文缺失答案的题目未收录。" : "来自肖1000题目与答案文件，单选、多选均已完成答案对应检查。"}</p>
             </div>
           )}
         </nav>
@@ -321,7 +359,7 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <div className="eyebrow">{bank === "master" ? "MASTER QUESTION BANK" : bank === "xiao" ? "XIAO 1000" : bank === "dai" ? "DAI ORIGINAL BANK" : "CHAPTER PRACTICE"}</div>
+            <div className="eyebrow">{favoriteMode ? "SAVED QUESTIONS" : bank === "master" ? "MASTER QUESTION BANK" : bank === "xiao" ? "XIAO 1000" : bank === "dai" ? "DAI ORIGINAL BANK" : "CHAPTER PRACTICE"}</div>
             <h1>{heading}</h1>
           </div>
           <div className="top-actions">
@@ -342,9 +380,31 @@ export default function Home() {
               <>
                 <div className="question-meta">
                   <span className={`type-badge type-${question.type}`}>{TYPE_NAMES[question.type as QuestionType]}</span>
-                  <span>第 {current + 1} / {questions.length} 题</span>
+                  <button className="question-index-button" onClick={() => setNavigatorOpen(true)}>第 {current + 1} / {questions.length} 题 <span>⌄</span></button>
                   {question.occurrences && question.occurrences > 1 ? <span>题库中出现 {question.occurrences} 次</span> : null}
                 </div>
+                {navigatorOpen && (
+                  <div className="question-navigator" role="dialog" aria-modal="true" aria-label="选择题号">
+                    <button className="navigator-scrim" aria-label="关闭题号目录" onClick={() => setNavigatorOpen(false)} />
+                    <div className="navigator-card">
+                      <div className="navigator-header">
+                        <div><span>QUESTION INDEX</span><strong>选择题号</strong></div>
+                        <button onClick={() => setNavigatorOpen(false)} aria-label="关闭">×</button>
+                      </div>
+                      <div className="navigator-legend"><span className="nav-dot nav-current" />当前 <span className="nav-dot nav-done" />已作答 <span className="nav-dot nav-saved" />已收藏</div>
+                      <div className="navigator-grid">
+                        {questions.map((item, index) => (
+                          <button
+                            key={item.id}
+                            className={`${index === current ? "navigator-current" : ""} ${progress.answered.includes(item.id) ? "navigator-done" : ""} ${progress.starred.includes(item.id) ? "navigator-saved" : ""}`}
+                            onClick={() => { resetQuestion(index); setNavigatorOpen(false); }}
+                            aria-label={`跳转到第 ${index + 1} 题`}
+                          >{index + 1}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="question-progress" aria-hidden="true"><span style={{ width: `${((current + 1) / questions.length) * 100}%` }} /></div>
                 <h2>{question.prompt}</h2>
 
@@ -410,9 +470,9 @@ export default function Home() {
               </>
             ) : (
               <div className="empty-state">
-                <div>没有找到匹配的题目</div>
-                <p>试试清空搜索或切换题型。</p>
-                <button className="primary-button" onClick={() => { restartView(); setQuery(""); setTypeFilter("all"); }}>显示全部题目</button>
+                <div>{favoriteMode ? "这里还没有收藏题目" : "没有找到匹配的题目"}</div>
+                <p>{favoriteMode ? "练题时点击右上角的星标，题目就会出现在这里。" : "试试清空搜索或切换题型。"}</p>
+                <button className="primary-button" onClick={() => { restartView(); setQuery(""); setTypeFilter("all"); if (favoriteMode) setFavoriteMode(false); }}>{favoriteMode ? "返回题库" : "显示全部题目"}</button>
               </div>
             )}
           </section>
