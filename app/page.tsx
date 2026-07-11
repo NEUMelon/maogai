@@ -51,7 +51,8 @@ function shuffle<T>(items: T[]) {
 }
 
 export default function Home() {
-  const [bank, setBank] = useState<"chapter" | "master">("chapter");
+  const [view, setView] = useState<"home" | "practice">("home");
+  const [bank, setBank] = useState<"chapter" | "master" | "xiao" | "dai">("chapter");
   const [section, setSection] = useState("intro");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [query, setQuery] = useState("");
@@ -88,8 +89,10 @@ export default function Home() {
   const baseQuestions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return (data.questions as Question[]).filter((question) => {
-      if (question.bank !== bank) return false;
-      if (bank === "chapter" && question.section !== section) return false;
+      if (bank === "chapter" || bank === "master") {
+        if (question.bank !== bank) return false;
+      } else if (question.bank !== bank) return false;
+      if ((bank === "chapter" || bank === "dai") && question.section !== section) return false;
       if (typeFilter !== "all" && question.type !== typeFilter) return false;
       if (normalizedQuery && !question.prompt.toLowerCase().includes(normalizedQuery)) return false;
       return true;
@@ -187,6 +190,23 @@ export default function Home() {
     setSidebarOpen(false);
   }
 
+  function enterLibrary(library: "core" | "xiao" | "dai") {
+    restartView();
+    setTypeFilter("all");
+    setQuery("");
+    if (library === "core") {
+      setBank("chapter");
+      setSection("intro");
+    } else if (library === "xiao") {
+      setBank("xiao");
+      setSection("xiao");
+    } else {
+      setBank("dai");
+      setSection("dai-intro");
+    }
+    setView("practice");
+  }
+
   function toggleStar() {
     if (!question) return;
     setProgress((previous) => ({
@@ -201,8 +221,47 @@ export default function Home() {
     }
   }
 
-  const currentChapter = data.chapters.find((chapter) => chapter.id === section);
-  const heading = bank === "master" ? "综合大题库" : `${currentChapter?.label} · ${currentChapter?.title}`;
+  const chapterList = bank === "chapter" ? data.chapters : bank === "dai" ? data.daiChapters : [];
+  const currentChapter = chapterList.find((chapter) => chapter.id === section);
+  const heading = bank === "master" ? "综合大题库" : bank === "xiao" ? "肖1000 · 精选题" : `${currentChapter?.label} · ${currentChapter?.title}`;
+
+  if (view === "home") {
+    return (
+      <main className="portal-shell">
+        <header className="portal-header">
+          <div className="portal-brand"><span className="melon-dot" />MELON 题室</div>
+          <div className="portal-meta">毛概 · 2023 版 <span>{data.stats.totalQuestions} 道已校验题目</span></div>
+        </header>
+        <section className="portal-hero">
+          <div className="portal-kicker">THINK · PRACTICE · REMEMBER</div>
+          <h1><span>把知识</span><br />练成直觉。</h1>
+          <p>三套题库，三条复习路径。选择此刻最适合你的那一套，安静地做完下一题。</p>
+          <div className="seed-orbit" aria-hidden="true"><i /><i /><i /><b>M</b></div>
+        </section>
+        <section className="library-grid" aria-label="选择题库">
+          <button className="library-card library-core" onClick={() => enterLibrary("core")}>
+            <span className="library-index">01 / COURSE</span>
+            <span className="library-title">课程题库</span>
+            <span className="library-description">章节练习与综合大题库，适合循序复习和考前抽查。</span>
+            <span className="library-footer"><strong>659</strong> 道题 <i>进入 →</i></span>
+          </button>
+          <button className="library-card library-xiao" onClick={() => enterLibrary("xiao")}>
+            <span className="library-index">02 / XIAO 1000</span>
+            <span className="library-title">肖1000</span>
+            <span className="library-description">精选单选与多选，配套独立答案文件逐题校验。</span>
+            <span className="library-footer"><strong>{data.stats.xiaoQuestions}</strong> 道题 <i>进入 →</i></span>
+          </button>
+          <button className="library-card library-dai" onClick={() => enterLibrary("dai")}>
+            <span className="library-index">03 / DAI ORIGINAL</span>
+            <span className="library-title">戴题库</span>
+            <span className="library-description">原创分章练习，正确答案直接读取原文红色标记。</span>
+            <span className="library-footer"><strong>{data.stats.daiQuestions}</strong> 道题 <i>进入 →</i></span>
+          </button>
+        </section>
+        <footer className="portal-footer"><span>本机自动保存进度</span><span>答案来自原始题库</span><span>MELON / 2026</span></footer>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">
@@ -211,18 +270,21 @@ export default function Home() {
 
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="brand-row">
-          <div className="brand-mark" aria-hidden="true">知</div>
-          <div>
-            <div className="brand-name">知行题室</div>
-            <div className="brand-subtitle">毛概 · 2023 版</div>
-          </div>
+            <div className="brand-mark" aria-hidden="true">M</div>
+            <div>
+              <div className="brand-name">MELON 题室</div>
+              <div className="brand-subtitle">毛概 · 2023 版</div>
+            </div>
+            <button className="home-link" onClick={() => { setSidebarOpen(false); setView("home"); }}>首页</button>
           <button className="sidebar-close" aria-label="关闭题库目录" onClick={() => setSidebarOpen(false)}>×</button>
         </div>
 
-        <div className="bank-switch" aria-label="选择题库">
-          <button className={bank === "chapter" ? "active" : ""} onClick={() => changeBank("chapter")}>章节练习</button>
-          <button className={bank === "master" ? "active" : ""} onClick={() => changeBank("master")}>综合题库</button>
-        </div>
+        {bank === "chapter" || bank === "master" ? (
+          <div className="bank-switch" aria-label="选择题库">
+            <button className={bank === "chapter" ? "active" : ""} onClick={() => changeBank("chapter")}>章节练习</button>
+            <button className={bank === "master" ? "active" : ""} onClick={() => changeBank("master")}>综合题库</button>
+          </div>
+        ) : <div className="active-library-pill">{bank === "xiao" ? "肖1000" : "戴题库"}<span>{questions.length} 道</span></div>}
 
         <label className="search-box">
           <span aria-hidden="true">⌕</span>
@@ -231,8 +293,8 @@ export default function Home() {
         </label>
 
         <nav className="chapter-nav" aria-label="章节目录">
-          <div className="nav-label">{bank === "chapter" ? "课程章节" : "题库概览"}</div>
-          {bank === "chapter" ? data.chapters.map((chapter) => {
+          <div className="nav-label">{chapterList.length ? "课程章节" : "题库概览"}</div>
+          {chapterList.length ? chapterList.map((chapter) => {
             const completed = (data.questions as Question[]).filter((item) => item.section === chapter.id && progress.answered.includes(item.id)).length;
             return (
               <button key={chapter.id} className={section === chapter.id ? "chapter-active" : ""} onClick={() => { restartView(); setSection(chapter.id); setSidebarOpen(false); }}>
@@ -242,9 +304,9 @@ export default function Home() {
             );
           }) : (
             <div className="master-summary">
-              <div><strong>{data.stats.masterQuestions}</strong><span>道去重好题</span></div>
+              <div><strong>{bank === "master" ? data.stats.masterQuestions : data.stats.xiaoQuestions}</strong><span>道已校验题目</span></div>
               <div><strong>{progress.starred.length}</strong><span>道已收藏</span></div>
-              <p>来自总题库的有效标准答案。重复题已合并，原文缺失答案的题目未收录。</p>
+              <p>{bank === "master" ? "来自综合题库的有效标准答案。重复题已合并，原文缺失答案的题目未收录。" : "来自肖1000题目与答案文件，单选、多选均已完成答案对应检查。"}</p>
             </div>
           )}
         </nav>
@@ -259,7 +321,7 @@ export default function Home() {
       <section className="workspace">
         <header className="topbar">
           <div>
-            <div className="eyebrow">{bank === "master" ? "MASTER QUESTION BANK" : "CHAPTER PRACTICE"}</div>
+            <div className="eyebrow">{bank === "master" ? "MASTER QUESTION BANK" : bank === "xiao" ? "XIAO 1000" : bank === "dai" ? "DAI ORIGINAL BANK" : "CHAPTER PRACTICE"}</div>
             <h1>{heading}</h1>
           </div>
           <div className="top-actions">
@@ -269,7 +331,7 @@ export default function Home() {
         </header>
 
         <div className="filter-row" aria-label="题型筛选">
-          {FILTERS.filter((filter) => filter.key !== "judge" || bank === "master").map((filter) => (
+          {FILTERS.filter((filter) => filter.key === "all" || (bank === "master") || (bank === "chapter" && filter.key !== "judge") || ((bank === "xiao" || bank === "dai") && (filter.key === "single" || filter.key === "multiple"))).map((filter) => (
             <button key={filter.key} className={typeFilter === filter.key ? "filter-active" : ""} onClick={() => { restartView(); setTypeFilter(filter.key); }}>{filter.label}</button>
           ))}
         </div>

@@ -20,9 +20,11 @@ test("question data is complete and internally consistent", async () => {
   const data = JSON.parse(raw);
   assert.equal(data.stats.chapterQuestions, 324);
   assert.equal(data.stats.masterQuestions, 335);
-  assert.equal(data.stats.totalQuestions, 659);
+  assert.equal(data.stats.xiaoQuestions, 149);
+  assert.equal(data.stats.daiQuestions, 599);
+  assert.equal(data.stats.totalQuestions, 1407);
   assert.equal(data.chapters.length, 9);
-  assert.equal(data.questions.length, 659);
+  assert.equal(data.questions.length, 1407);
 
   const ids = new Set();
   for (const question of data.questions) {
@@ -45,9 +47,10 @@ test("server renders the finished Chinese practice app", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<html lang="zh-CN">/);
-  assert.match(html, /<title>知行题室｜毛概 2023 版刷题<\/title>/);
-  assert.match(html, /知行题室/);
-  assert.match(html, /马克思主义中国化时代化/);
-  assert.match(html, /提交答案/);
+  assert.match(html, /<title>MELON 题室｜毛概刷题<\/title>/);
+  assert.match(html, /MELON 题室/);
+  assert.match(html, /肖1000/);
+  assert.match(html, /戴题库/);
+  assert.match(html, /把知识/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
