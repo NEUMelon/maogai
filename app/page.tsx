@@ -160,7 +160,13 @@ export default function Home() {
         if (event.key === "Escape") setNavigatorOpen(false);
         return;
       }
-      if (!question || event.target instanceof HTMLInputElement) return;
+      const target = event.target;
+      if (
+        !question
+        || target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLElement && target.isContentEditable)
+      ) return;
       const optionIndex = Number(event.key) - 1;
       if (!submitted && optionIndex >= 0 && optionIndex < question.options.length) {
         const key = question.options[optionIndex].key;

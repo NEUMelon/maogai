@@ -56,6 +56,7 @@ test("practice UI includes favorites and direct question navigation", async () =
   assert.match(source, /本题批注/);
   assert.match(source, /自动保存/);
   assert.match(source, /notes: Record<string, string>/);
+  assert.match(source, /target instanceof HTMLTextAreaElement/);
 });
 
 test("server renders the finished Chinese practice app", async () => {
