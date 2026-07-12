@@ -89,8 +89,16 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - `npm run dev`: start local development
 - `npm run build`: verify the vinext build output
+- `npm run build:pages`: build the static GitHub Pages version
 - `npm test`: build the starter and verify its rendered loading skeleton
 - `npm run db:generate`: generate Drizzle migrations after schema changes
+
+## GitHub Pages
+
+The workflow in `.github/workflows/deploy-pages.yml` publishes a static build
+whenever `main` changes. In GitHub repository Settings → Pages, set the source
+to **GitHub Actions**. The project site will be available at
+`https://neumelon.github.io/maogai/` after the workflow succeeds.
 
 ## Learn More
 
