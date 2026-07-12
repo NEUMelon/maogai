@@ -5,8 +5,8 @@ import data from "./data/questions.json";
 
 type QuestionType = "single" | "multiple" | "judge" | "short";
 type TypeFilter = "all" | QuestionType;
-type PracticeBank = "chapter" | "master" | "xiao" | "dai" | "lite" | "xijiao" | "selftest";
-type LibraryId = "core" | "xiao" | "dai" | "lite" | "xijiao" | "selftest";
+type PracticeBank = "chapter" | "master" | "xiao" | "dai" | "lite" | "xijiao" | "selftest" | "hust";
+type LibraryId = "core" | "xiao" | "dai" | "lite" | "xijiao" | "selftest" | "hust";
 type Question = (typeof data.questions)[number];
 type Progress = {
   answered: string[];
@@ -54,7 +54,7 @@ function shuffle<T>(items: T[]) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<"home" | "practice">("home");
+  const [view, setView] = useState<"home" | "practice" | "exam">("home");
   const [bank, setBank] = useState<PracticeBank>("chapter");
   const [section, setSection] = useState("intro");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -70,6 +70,10 @@ export default function Home() {
   const [favoriteMode, setFavoriteMode] = useState(false);
   const [navigatorOpen, setNavigatorOpen] = useState(false);
   const [annotationOpen, setAnnotationOpen] = useState(false);
+  const [examQuestionIds, setExamQuestionIds] = useState<string[]>([]);
+  const [examCurrent, setExamCurrent] = useState(0);
+  const [examAnswers, setExamAnswers] = useState<Record<string, string[]>>({});
+  const [examSubmitted, setExamSubmitted] = useState(false);
 
   useEffect(() => {
     try {
@@ -156,8 +160,22 @@ export default function Home() {
     recordResult(sameAnswer(selected, question.answer));
   }, [question, recordResult, selected]);
 
+  function startExam() {
+    const objectiveQuestions = (data.questions as Question[]).filter((item) => item.type === "single" || item.type === "multiple");
+    const singles = shuffle(objectiveQuestions.filter((item) => item.type === "single")).slice(0, 40);
+    const multiples = shuffle(objectiveQuestions.filter((item) => item.type === "multiple")).slice(0, 10);
+    if (singles.length < 40 || multiples.length < 10) return;
+    setExamQuestionIds(shuffle([...singles, ...multiples].map((item) => item.id)));
+    setExamCurrent(0);
+    setExamAnswers({});
+    setExamSubmitted(false);
+    setView("exam");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (view !== "practice") return;
       if (navigatorOpen) {
         if (event.key === "Escape") setNavigatorOpen(false);
         return;
@@ -187,7 +205,7 @@ export default function Home() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [goNext, navigatorOpen, question, revealed, submit, submitted]);
+  }, [goNext, navigatorOpen, question, revealed, submit, submitted, view]);
 
   function chooseOption(key: string) {
     if (!question || submitted || question.type === "short") return;
@@ -231,6 +249,7 @@ export default function Home() {
         lite: ["lite", "lite-intro"],
         xijiao: ["xijiao", "xijiao-ch1"],
         selftest: ["selftest", "selftest-1"],
+        hust: ["hust", "hust-intro"],
       };
       const [nextBank, nextSection] = defaults[library];
       setBank(nextBank);
@@ -299,7 +318,9 @@ export default function Home() {
             ? data.xijiaoChapters
             : bank === "selftest"
               ? data.selftestSets
-              : [];
+              : bank === "hust"
+                ? data.hustChapters
+                : [];
   const currentChapter = chapterList.find((chapter) => chapter.id === section);
   const heading = favoriteMode ? `收藏题目 · ${libraryName}` : bank === "master" ? "综合大题库" : `${currentChapter?.label} · ${currentChapter?.title}`;
   const availableTypes = new Set((data.questions as Question[]).filter((item) => {
@@ -316,7 +337,31 @@ export default function Home() {
     lite: "CHAPTER LITE",
     xijiao: "XIJIAO QUESTION BANK",
     selftest: "FINAL SELF-TEST",
+    hust: "HUST PAST PAPERS",
   };
+  const examQuestions = useMemo(() => {
+    const byId = new Map((data.questions as Question[]).map((item) => [item.id, item]));
+    return examQuestionIds.map((id) => byId.get(id)).filter(Boolean) as Question[];
+  }, [examQuestionIds]);
+  const examQuestion = examQuestions[examCurrent];
+  const examAnsweredCount = examQuestions.filter((item) => (examAnswers[item.id] ?? []).length > 0).length;
+  const examScore = examQuestions.reduce((score, item) => score + (sameAnswer(examAnswers[item.id] ?? [], item.answer) ? 2 : 0), 0);
+  const examFullyCorrect = examQuestions.filter((item) => sameAnswer(examAnswers[item.id] ?? [], item.answer)).length;
+
+  function chooseExamOption(key: string) {
+    if (!examQuestion || examSubmitted) return;
+    setExamAnswers((previous) => {
+      const currentAnswer = previous[examQuestion.id] ?? [];
+      const nextAnswer = examQuestion.type === "multiple"
+        ? updateList(currentAnswer, key, !currentAnswer.includes(key))
+        : [key];
+      return { ...previous, [examQuestion.id]: nextAnswer };
+    });
+  }
+
+  function submitExam() {
+    if (window.confirm("现在交卷并评分吗？交卷后本套试卷不能再修改。")) setExamSubmitted(true);
+  }
 
   if (view === "home") {
     return (
@@ -328,13 +373,19 @@ export default function Home() {
         <section className="portal-hero">
           <div className="portal-kicker">THINK · PRACTICE · REMEMBER</div>
           <h1><span>把知识</span><br />练成直觉。</h1>
-          <p>六套题库，六条复习路径。选择此刻最适合你的那一套，安静地做完下一题。</p>
+          <p>七套题库，七条复习路径；再来一场随机模拟。选择此刻最适合你的那一套，安静地做完下一题。</p>
           <div className="seed-orbit" aria-hidden="true"><i /><i /><i /><b>M</b></div>
         </section>
         <section className="library-grid" aria-label="选择题库">
+          <button className="library-card library-exam" onClick={startExam}>
+            <span className="library-index">EXAM / 100 POINTS</span>
+            <span className="library-title">随机考试</span>
+            <span className="library-description">从全体题库随机抽取 40 道单选与 10 道多选，完整模拟一次百分钟的知识盘点。</span>
+            <span className="library-footer"><strong>50</strong> 道题 <i>开始 →</i></span>
+          </button>
           {data.banks.map((item, index) => (
             <button key={item.id} className={`library-card library-${item.id}`} onClick={() => enterLibrary(item.id as LibraryId)}>
-              <span className="library-index">{String(index + 1).padStart(2, "0")} / {item.id.toUpperCase()}</span>
+              <span className="library-index">{String(index + 2).padStart(2, "0")} / {item.id.toUpperCase()}</span>
               <span className="library-title">{item.title}</span>
               <span className="library-description">{item.subtitle}</span>
               <span className="library-footer"><strong>{item.count}</strong> 道题 <i>进入 →</i></span>
@@ -342,6 +393,78 @@ export default function Home() {
           ))}
         </section>
         <footer className="portal-footer"><span>本机自动保存进度</span><span>答案来自原始题库</span><span>MELON / 2026</span></footer>
+      </main>
+    );
+  }
+
+  if (view === "exam") {
+    if (!examQuestion) {
+      return (
+        <main className="exam-shell">
+          <button className="exam-back" onClick={() => setView("home")}>← 返回首页</button>
+          <div className="exam-empty"><strong>本套试卷尚未生成</strong><button className="primary-button" onClick={startExam}>重新生成试卷</button></div>
+        </main>
+      );
+    }
+    const examSelected = examAnswers[examQuestion.id] ?? [];
+    const examQuestionCorrect = sameAnswer(examSelected, examQuestion.answer);
+    return (
+      <main className="exam-shell">
+        <header className="exam-header">
+          <button className="exam-back" onClick={() => { if (!examSubmitted && !window.confirm("退出考试将放弃本套作答，确定返回首页吗？")) return; setView("home"); }}>← MELON 题室</button>
+          <div className="exam-title"><span>RANDOM EXAMINATION</span><strong>全题库随机考试</strong></div>
+          <div className="exam-counter">{examSubmitted ? `${examScore} / 100 分` : `${examAnsweredCount} / 50 已作答`}</div>
+        </header>
+        <div className="exam-layout">
+          <section className="exam-card">
+            {examSubmitted && (
+              <div className="exam-result" role="status">
+                <span>EXAM RESULT</span>
+                <strong>{examScore}<i>/100</i></strong>
+                <p>答对 {examFullyCorrect} 题。每题 2 分；多选必须完全选对才得分。</p>
+                <button className="primary-button" onClick={startExam}>再来一套</button>
+              </div>
+            )}
+            <div className="question-meta">
+              <span className={`type-badge type-${examQuestion.type}`}>{TYPE_NAMES[examQuestion.type as QuestionType]}</span>
+              <span>第 {examCurrent + 1} / 50 题</span>
+              <span className="exam-source">{examQuestion.sectionTitle}</span>
+            </div>
+            <div className="question-progress" aria-hidden="true"><span style={{ width: `${((examCurrent + 1) / 50) * 100}%` }} /></div>
+            <h1>{examQuestion.prompt}</h1>
+            <div className="options-list" role="group" aria-label="考试答案选项">
+              {examQuestion.options.map((option) => {
+                const checked = examSelected.includes(option.key);
+                const correctOption = examSubmitted && examQuestion.answer.includes(option.key);
+                const wrongOption = examSubmitted && checked && !examQuestion.answer.includes(option.key);
+                return <button key={option.key} disabled={examSubmitted} onClick={() => chooseExamOption(option.key)} className={`option ${checked ? "option-selected" : ""} ${correctOption ? "option-correct" : ""} ${wrongOption ? "option-wrong" : ""}`}>
+                  <span className="option-key">{option.key}</span><span className="option-text">{option.text}</span>
+                </button>;
+              })}
+            </div>
+            {examSubmitted && (
+              <div className={`feedback ${examQuestionCorrect ? "feedback-correct" : "feedback-wrong"}`}>
+                <div className="feedback-icon">{examQuestionCorrect ? "✓" : "×"}</div>
+                <div><strong>{examQuestionCorrect ? "本题得 2 分" : "本题得 0 分"}</strong><p>标准答案：{examQuestion.answer.join("、")}</p></div>
+              </div>
+            )}
+            <footer className="question-footer exam-footer">
+              <button className="previous-button" onClick={() => setExamCurrent((previous) => Math.max(0, previous - 1))} disabled={examCurrent === 0}>上一题</button>
+              <span>{examSubmitted ? "可查看全部答案" : "作答会在本试卷内暂存"}</span>
+              {examCurrent === 49 ? (
+                examSubmitted ? <button className="primary-button" onClick={() => setView("home")}>返回首页</button> : <button className="primary-button" onClick={submitExam}>交卷并评分</button>
+              ) : <button className="primary-button" onClick={() => setExamCurrent((previous) => previous + 1)}>下一题</button>}
+            </footer>
+          </section>
+          <aside className="exam-sidebar">
+            <div className="exam-sidebar-heading"><span>QUESTION MAP</span><strong>试题导航</strong></div>
+            <div className="exam-map">
+              {examQuestions.map((item, index) => <button key={item.id} onClick={() => setExamCurrent(index)} className={`${index === examCurrent ? "exam-map-current" : ""} ${(examAnswers[item.id] ?? []).length ? "exam-map-done" : ""}`}>{index + 1}</button>)}
+            </div>
+            <p><i />已作答 <b />当前题目</p>
+            {!examSubmitted && <button className="exam-submit" onClick={submitExam}>交卷并评分</button>}
+          </aside>
+        </div>
       </main>
     );
   }

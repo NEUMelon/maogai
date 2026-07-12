@@ -25,13 +25,15 @@ test("question data is complete and internally consistent", async () => {
   assert.equal(data.stats.liteQuestions, 174);
   assert.equal(data.stats.xijiaoQuestions, 259);
   assert.equal(data.stats.selftestQuestions, 105);
-  assert.equal(data.stats.totalQuestions, 1945);
+  assert.equal(data.stats.hustQuestions, 123);
+  assert.equal(data.stats.totalQuestions, 2068);
   assert.equal(data.chapters.length, 9);
   assert.equal(data.xiaoChapters.length, 9);
   assert.equal(data.liteChapters.length, 9);
   assert.equal(data.xijiaoChapters.length, 7);
   assert.equal(data.selftestSets.length, 7);
-  assert.equal(data.questions.length, 1945);
+  assert.equal(data.hustChapters.length, 8);
+  assert.equal(data.questions.length, 2068);
 
   const xiaoCounts = new Map(data.xiaoChapters.map((chapter) => [chapter.id, chapter.count]));
   assert.deepEqual([...xiaoCounts.values()], [8, 18, 48, 30, 15, 6, 13, 7, 4]);
@@ -50,7 +52,10 @@ test("question data is complete and internally consistent", async () => {
     for (const answer of question.answer) assert.ok(optionKeys.has(answer), `invalid answer ${answer} for ${question.id}`);
     if (question.type === "short") assert.ok(question.explanation.trim(), `missing short answer for ${question.id}`);
     if (question.bank === "xiao") assert.ok(xiaoCounts.has(question.section), `unknown Xiao chapter for ${question.id}`);
-    if (["lite", "xijiao", "selftest"].includes(question.bank)) assert.notEqual(question.type, "short", `subjective question imported: ${question.id}`);
+    if (["lite", "xijiao", "selftest", "hust"].includes(question.bank)) assert.notEqual(question.type, "short", `subjective question imported: ${question.id}`);
+    if (question.bank === "lite") {
+      for (const option of question.options) assert.doesNotMatch(option.text, /(?:简要)?解析\s*[:：]/, `analysis leaked into ${question.id}`);
+    }
   }
 });
 
@@ -64,7 +69,11 @@ test("practice UI includes favorites and direct question navigation", async () =
   assert.match(source, /自动保存/);
   assert.match(source, /notes: Record<string, string>/);
   assert.match(source, /target instanceof HTMLTextAreaElement/);
-  assert.match(source, /"lite" \| "xijiao" \| "selftest"/);
+  assert.match(source, /"lite" \| "xijiao" \| "selftest" \| "hust"/);
+  assert.match(source, /slice\(0, 40\)/);
+  assert.match(source, /slice\(0, 10\)/);
+  assert.match(source, /sameAnswer\(examAnswers/);
+  assert.match(source, /多选必须完全选对才得分/);
 });
 
 test("server renders the finished Chinese practice app", async () => {
@@ -80,6 +89,8 @@ test("server renders the finished Chinese practice app", async () => {
   assert.match(html, /章节题库 Lite/);
   assert.match(html, /西交毛概选择题库/);
   assert.match(html, /期末自测题/);
+  assert.match(html, /华中科技大学毛概真题/);
+  assert.match(html, /随机考试/);
   assert.match(html, /把知识/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
