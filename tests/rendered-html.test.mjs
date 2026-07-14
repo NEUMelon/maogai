@@ -73,7 +73,36 @@ test("practice UI includes favorites and direct question navigation", async () =
   assert.match(source, /slice\(0, 40\)/);
   assert.match(source, /slice\(0, 10\)/);
   assert.match(source, /sameAnswer\(examAnswers/);
-  assert.match(source, /多选必须完全选对才得分/);
+  assert.match(source, /答案必须完全正确才得分/);
+  assert.match(source, /fluidData\.questions/);
+  assert.match(source, /slice\(0, 20\)/);
+  assert.match(source, /examCourse === "fluid" \? 5 : 2/);
+});
+
+test("engineering fluid mechanics data is complete and exam-safe", async () => {
+  const raw = await readFile(new URL("app/data/fluid-questions.json", root), "utf8");
+  const data = JSON.parse(raw);
+  assert.equal(data.stats.totalQuestions, 120);
+  assert.equal(data.stats.objectiveQuestions, 108);
+  assert.equal(data.stats.shortQuestions, 12);
+  assert.equal(data.chapters.length, 8);
+  assert.equal(data.questions.length, 120);
+  assert.equal(data.chapters.reduce((sum, chapter) => sum + chapter.count, 0), 120);
+  const ids = new Set();
+  for (const question of data.questions) {
+    assert.ok(question.prompt.trim(), `empty fluid prompt for ${question.id}`);
+    assert.ok(!ids.has(question.id), `duplicate fluid id ${question.id}`);
+    ids.add(question.id);
+    if (question.type === "short") {
+      assert.equal(question.options.length, 0);
+      assert.ok(question.explanation.trim(), `missing fluid written answer for ${question.id}`);
+    } else {
+      const keys = new Set(question.options.map((option) => option.key));
+      assert.ok(question.options.length >= 2, `incomplete fluid options for ${question.id}`);
+      assert.ok(question.answer.length > 0, `missing fluid answer for ${question.id}`);
+      for (const answer of question.answer) assert.ok(keys.has(answer), `invalid fluid answer ${answer} for ${question.id}`);
+    }
+  }
 });
 
 test("server renders the finished Chinese practice app", async () => {
@@ -82,15 +111,11 @@ test("server renders the finished Chinese practice app", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<html lang="zh-CN">/);
-  assert.match(html, /<title>MELON 题室｜毛概刷题<\/title>/);
+  assert.match(html, /<title>MELON 题室｜把复杂，变成会做<\/title>/);
   assert.match(html, /MELON 题室/);
-  assert.match(html, /肖1000/);
-  assert.match(html, /戴题库/);
-  assert.match(html, /章节题库 Lite/);
-  assert.match(html, /西交毛概选择题库/);
-  assert.match(html, /期末自测题/);
-  assert.match(html, /华中科技大学毛概真题/);
-  assert.match(html, /随机考试/);
-  assert.match(html, /把知识/);
+  assert.match(html, /工程流体力学/);
+  assert.match(html, /毛泽东思想和中国特色/);
+  assert.match(html, /把复杂/);
+  assert.match(html, /今天，想把哪门课/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });

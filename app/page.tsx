@@ -2,12 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import data from "./data/questions.json";
+import fluidData from "./data/fluid-questions.json";
 
 type QuestionType = "single" | "multiple" | "judge" | "short";
 type TypeFilter = "all" | QuestionType;
-type PracticeBank = "chapter" | "master" | "xiao" | "dai" | "lite" | "xijiao" | "selftest" | "hust";
+type PracticeBank = "chapter" | "master" | "xiao" | "dai" | "lite" | "xijiao" | "selftest" | "hust" | "fluid-thought";
 type LibraryId = "core" | "xiao" | "dai" | "lite" | "xijiao" | "selftest" | "hust";
-type Question = (typeof data.questions)[number];
+type Question = {
+  id: string;
+  bank: string;
+  section: string;
+  sectionTitle: string;
+  type: QuestionType;
+  prompt: string;
+  options: { key: string; text: string }[];
+  answer: string[];
+  explanation: string;
+  source: string;
+  occurrences?: number;
+};
 type Progress = {
   answered: string[];
   correct: string[];
@@ -17,6 +30,7 @@ type Progress = {
 };
 
 const EMPTY_PROGRESS: Progress = { answered: [], correct: [], wrong: [], starred: [], notes: {} };
+const ALL_QUESTIONS: Question[] = [...data.questions, ...fluidData.questions] as Question[];
 
 const TYPE_NAMES: Record<QuestionType, string> = {
   single: "单选题",
@@ -54,7 +68,7 @@ function shuffle<T>(items: T[]) {
 }
 
 export default function Home() {
-  const [view, setView] = useState<"home" | "practice" | "exam">("home");
+  const [view, setView] = useState<"landing" | "home" | "fluid-home" | "practice" | "exam">("landing");
   const [bank, setBank] = useState<PracticeBank>("chapter");
   const [section, setSection] = useState("intro");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
@@ -74,6 +88,7 @@ export default function Home() {
   const [examCurrent, setExamCurrent] = useState(0);
   const [examAnswers, setExamAnswers] = useState<Record<string, string[]>>({});
   const [examSubmitted, setExamSubmitted] = useState(false);
+  const [examCourse, setExamCourse] = useState<"mao" | "fluid">("mao");
 
   useEffect(() => {
     try {
@@ -98,7 +113,7 @@ export default function Home() {
 
   const baseQuestions = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    return (data.questions as Question[]).filter((question) => {
+    return ALL_QUESTIONS.filter((question) => {
       const inCurrentLibrary = bank === "chapter" || bank === "master"
         ? question.bank === "chapter" || question.bank === "master"
         : question.bank === bank;
@@ -160,12 +175,19 @@ export default function Home() {
     recordResult(sameAnswer(selected, question.answer));
   }, [question, recordResult, selected]);
 
-  function startExam() {
-    const objectiveQuestions = (data.questions as Question[]).filter((item) => item.type === "single" || item.type === "multiple");
-    const singles = shuffle(objectiveQuestions.filter((item) => item.type === "single")).slice(0, 40);
-    const multiples = shuffle(objectiveQuestions.filter((item) => item.type === "multiple")).slice(0, 10);
-    if (singles.length < 40 || multiples.length < 10) return;
-    setExamQuestionIds(shuffle([...singles, ...multiples].map((item) => item.id)));
+  function startExam(course: "mao" | "fluid") {
+    if (course === "fluid") {
+      const objectiveQuestions = fluidData.questions.filter((item) => item.type === "single" || item.type === "multiple");
+      if (objectiveQuestions.length < 20) return;
+      setExamQuestionIds(shuffle(objectiveQuestions).slice(0, 20).map((item) => item.id));
+    } else {
+      const objectiveQuestions = data.questions.filter((item) => item.type === "single" || item.type === "multiple");
+      const singles = shuffle(objectiveQuestions.filter((item) => item.type === "single")).slice(0, 40);
+      const multiples = shuffle(objectiveQuestions.filter((item) => item.type === "multiple")).slice(0, 10);
+      if (singles.length < 40 || multiples.length < 10) return;
+      setExamQuestionIds(shuffle([...singles, ...multiples].map((item) => item.id)));
+    }
+    setExamCourse(course);
     setExamCurrent(0);
     setExamAnswers({});
     setExamSubmitted(false);
@@ -258,6 +280,16 @@ export default function Home() {
     setView("practice");
   }
 
+  function enterFluidLibrary() {
+    restartView();
+    setTypeFilter("all");
+    setQuery("");
+    setFavoriteMode(false);
+    setBank("fluid-thought");
+    setSection("fluid-ch1");
+    setView("practice");
+  }
+
   function openFavorites() {
     restartView();
     setFavoriteMode(true);
@@ -301,10 +333,11 @@ export default function Home() {
     }
   }
 
-  const libraryId: LibraryId = bank === "chapter" || bank === "master" ? "core" : bank;
-  const library = data.banks.find((item) => item.id === libraryId);
+  const fluidMode = bank === "fluid-thought";
+  const libraryId: LibraryId = bank === "chapter" || bank === "master" || bank === "fluid-thought" ? "core" : bank;
+  const library = fluidMode ? fluidData.banks[0] : data.banks.find((item) => item.id === libraryId);
   const libraryName = library?.title ?? "题库";
-  const libraryQuestionIds = new Set((data.questions as Question[]).filter((item) => libraryId === "core" ? item.bank === "chapter" || item.bank === "master" : item.bank === libraryId).map((item) => item.id));
+  const libraryQuestionIds = new Set(ALL_QUESTIONS.filter((item) => bank === "fluid-thought" ? item.bank === "fluid-thought" : libraryId === "core" ? item.bank === "chapter" || item.bank === "master" : item.bank === libraryId).map((item) => item.id));
   const libraryStarredCount = progress.starred.filter((id) => libraryQuestionIds.has(id)).length;
   const chapterList = bank === "chapter"
     ? data.chapters
@@ -320,10 +353,12 @@ export default function Home() {
               ? data.selftestSets
               : bank === "hust"
                 ? data.hustChapters
-                : [];
+                : bank === "fluid-thought"
+                  ? fluidData.chapters
+                  : [];
   const currentChapter = chapterList.find((chapter) => chapter.id === section);
   const heading = favoriteMode ? `收藏题目 · ${libraryName}` : bank === "master" ? "综合大题库" : `${currentChapter?.label} · ${currentChapter?.title}`;
-  const availableTypes = new Set((data.questions as Question[]).filter((item) => {
+  const availableTypes = new Set(ALL_QUESTIONS.filter((item) => {
     if (bank === "master") return item.bank === "master";
     if (bank === "chapter") return item.bank === "chapter" && item.section === section;
     return item.bank === bank && (favoriteMode || item.section === section);
@@ -338,14 +373,20 @@ export default function Home() {
     xijiao: "XIJIAO QUESTION BANK",
     selftest: "FINAL SELF-TEST",
     hust: "HUST PAST PAPERS",
+    "fluid-thought": "ENGINEERING FLUID MECHANICS",
   };
   const examQuestions = useMemo(() => {
-    const byId = new Map((data.questions as Question[]).map((item) => [item.id, item]));
+    const byId = new Map(ALL_QUESTIONS.map((item) => [item.id, item]));
     return examQuestionIds.map((id) => byId.get(id)).filter(Boolean) as Question[];
   }, [examQuestionIds]);
   const examQuestion = examQuestions[examCurrent];
+  const examPoints = examCourse === "fluid" ? 5 : 2;
+  const examTotal = examCourse === "fluid" ? 100 : 100;
+  const examQuestionCount = examCourse === "fluid" ? 20 : 50;
+  const examHomeView = examCourse === "fluid" ? "fluid-home" : "home";
+  const examCourseName = examCourse === "fluid" ? "工程流体力学模拟考试" : "毛概全题库随机考试";
   const examAnsweredCount = examQuestions.filter((item) => (examAnswers[item.id] ?? []).length > 0).length;
-  const examScore = examQuestions.reduce((score, item) => score + (sameAnswer(examAnswers[item.id] ?? [], item.answer) ? 2 : 0), 0);
+  const examScore = examQuestions.reduce((score, item) => score + (sameAnswer(examAnswers[item.id] ?? [], item.answer) ? examPoints : 0), 0);
   const examFullyCorrect = examQuestions.filter((item) => sameAnswer(examAnswers[item.id] ?? [], item.answer)).length;
 
   function chooseExamOption(key: string) {
@@ -363,11 +404,87 @@ export default function Home() {
     if (window.confirm("现在交卷并评分吗？交卷后本套试卷不能再修改。")) setExamSubmitted(true);
   }
 
+  if (view === "landing") {
+    return (
+      <main className="melon-landing">
+        <nav className="landing-nav">
+          <div className="landing-wordmark"><span className="melon-dot" />MELON</div>
+          <div className="landing-nav-copy">A QUIET PLACE TO KNOW MORE</div>
+          <a href="#courses">开始学习 <span>↓</span></a>
+        </nav>
+        <section className="landing-hero">
+          <div className="landing-copy">
+            <span className="landing-kicker">LEARN WITH CLARITY · 2026</span>
+            <h1>把复杂，<br /><em>变成会做。</em></h1>
+            <p>不是把答案背下来。是让每一次选择、回想与修正，都把知识推得更深一点。</p>
+          </div>
+          <div className="melon-stage" aria-hidden="true">
+            <div className="melon-halo halo-one" /><div className="melon-halo halo-two" />
+            <div className="melon-fruit"><div className="melon-rind"><div className="melon-flesh"><i /><i /><i /><i /><i /><b>M</b></div></div></div>
+            <span className="float-label label-one">THINK</span><span className="float-label label-two">PRACTICE</span><span className="float-label label-three">REMEMBER</span>
+          </div>
+          <a className="scroll-invitation" href="#courses"><span />向下探索课程</a>
+        </section>
+        <section className="course-gateway" id="courses">
+          <header className="gateway-heading">
+            <span>CHOOSE YOUR FIELD</span>
+            <h2>今天，想把哪门课<br />学得更明白？</h2>
+            <p>两个独立题室，共用同一套安静、清晰的学习体验。</p>
+          </header>
+          <div className="course-cards">
+            <button className="course-card course-mao" onClick={() => setView("home")}>
+              <span className="course-number">01</span><span className="course-tag">IDEOLOGY · 2068 QUESTIONS</span>
+              <div className="course-glyph">毛</div><h3>毛泽东思想和中国特色<br />社会主义理论体系概论</h3>
+              <p>七套题库、章节练习、收藏批注与随机模拟考试。</p><i>进入毛概题室 →</i>
+            </button>
+            <button className="course-card course-fluid" onClick={() => setView("fluid-home")}>
+              <span className="course-number">02</span><span className="course-tag">MECHANICS · 120 QUESTIONS</span>
+              <div className="course-glyph">流</div><h3>工程流体力学</h3>
+              <p>八章思考题、公式推理、客观题训练与 100 分模拟考试。</p><i>进入流体力学题室 →</i>
+            </button>
+          </div>
+          <footer className="gateway-footer"><span>MELON 题室</span><span>答案源自课程题库 · 进度保存在本机</span><span>NEU / 2026</span></footer>
+        </section>
+      </main>
+    );
+  }
+
+  if (view === "fluid-home") {
+    return (
+      <main className="portal-shell fluid-portal">
+        <header className="portal-header">
+          <button className="portal-brand portal-brand-button" onClick={() => setView("landing")}><span className="melon-dot" />MELON 题室</button>
+          <div className="portal-meta">工程流体力学 <span>{fluidData.stats.totalQuestions} 道思考题</span></div>
+        </header>
+        <section className="portal-hero fluid-portal-hero">
+          <div className="portal-kicker">OBSERVE · MODEL · SOLVE</div>
+          <h1><span>让流动</span><br />变得可见。</h1>
+          <p>从连续介质到边界层，沿着八章知识脉络，把概念、方程和工程直觉连接起来。</p>
+          <div className="fluid-orbit" aria-hidden="true"><i /><i /><i /><b>∿</b></div>
+        </section>
+        <section className="library-grid fluid-library-grid" aria-label="工程流体力学学习入口">
+          <button className="library-card library-fluid-exam" onClick={() => startExam("fluid")}>
+            <span className="library-index">EXAM / 100 POINTS</span><span className="library-title">模拟考试</span>
+            <span className="library-description">随机抽取 20 道选择或填空型客观题，每题 5 分，不包含解答题。</span>
+            <span className="library-footer"><strong>20</strong> 道题 <i>开始 →</i></span>
+          </button>
+          <button className="library-card library-fluid-bank" onClick={enterFluidLibrary}>
+            <span className="library-index">01 / THOUGHT QUESTIONS</span><span className="library-title">思考题题库</span>
+            <span className="library-description">按八章整理的概念选择、填空判断与参考解答，支持收藏、批注和章节练习。</span>
+            <span className="library-footer"><strong>{fluidData.stats.totalQuestions}</strong> 道题 <i>进入 →</i></span>
+          </button>
+          <div className="fluid-data-card"><span>QUESTION COMPOSITION</span><div><strong>{fluidData.stats.objectiveQuestions}</strong><small>客观题</small></div><div><strong>{fluidData.stats.shortQuestions}</strong><small>解答题</small></div><p>模拟考试只抽取客观题。所有解答题仍可在章节练习中查看参考答案。</p></div>
+        </section>
+        <footer className="portal-footer"><span>八章完整分类</span><span>本机自动保存进度</span><button onClick={() => setView("landing")}>返回课程门面 ↑</button></footer>
+      </main>
+    );
+  }
+
   if (view === "home") {
     return (
       <main className="portal-shell">
         <header className="portal-header">
-          <div className="portal-brand"><span className="melon-dot" />MELON 题室</div>
+          <button className="portal-brand portal-brand-button" onClick={() => setView("landing")}><span className="melon-dot" />MELON 题室</button>
           <div className="portal-meta">毛概 · 2023 版 <span>{data.stats.totalQuestions} 道已校验题目</span></div>
         </header>
         <section className="portal-hero">
@@ -377,7 +494,7 @@ export default function Home() {
           <div className="seed-orbit" aria-hidden="true"><i /><i /><i /><b>M</b></div>
         </section>
         <section className="library-grid" aria-label="选择题库">
-          <button className="library-card library-exam" onClick={startExam}>
+          <button className="library-card library-exam" onClick={() => startExam("mao")}>
             <span className="library-index">EXAM / 100 POINTS</span>
             <span className="library-title">随机考试</span>
             <span className="library-description">从全体题库随机抽取 40 道单选与 10 道多选，完整模拟一次百分钟的知识盘点。</span>
@@ -392,7 +509,7 @@ export default function Home() {
             </button>
           ))}
         </section>
-        <footer className="portal-footer"><span>本机自动保存进度</span><span>答案来自原始题库</span><span>MELON / 2026</span></footer>
+        <footer className="portal-footer"><span>本机自动保存进度</span><span>答案来自原始题库</span><button onClick={() => setView("landing")}>返回课程门面 ↑</button></footer>
       </main>
     );
   }
@@ -401,8 +518,8 @@ export default function Home() {
     if (!examQuestion) {
       return (
         <main className="exam-shell">
-          <button className="exam-back" onClick={() => setView("home")}>← 返回首页</button>
-          <div className="exam-empty"><strong>本套试卷尚未生成</strong><button className="primary-button" onClick={startExam}>重新生成试卷</button></div>
+          <button className="exam-back" onClick={() => setView(examHomeView)}>← 返回首页</button>
+          <div className="exam-empty"><strong>本套试卷尚未生成</strong><button className="primary-button" onClick={() => startExam(examCourse)}>重新生成试卷</button></div>
         </main>
       );
     }
@@ -411,26 +528,26 @@ export default function Home() {
     return (
       <main className="exam-shell">
         <header className="exam-header">
-          <button className="exam-back" onClick={() => { if (!examSubmitted && !window.confirm("退出考试将放弃本套作答，确定返回首页吗？")) return; setView("home"); }}>← MELON 题室</button>
-          <div className="exam-title"><span>RANDOM EXAMINATION</span><strong>全题库随机考试</strong></div>
-          <div className="exam-counter">{examSubmitted ? `${examScore} / 100 分` : `${examAnsweredCount} / 50 已作答`}</div>
+          <button className="exam-back" onClick={() => { if (!examSubmitted && !window.confirm("退出考试将放弃本套作答，确定返回首页吗？")) return; setView(examHomeView); }}>← MELON 题室</button>
+          <div className="exam-title"><span>RANDOM EXAMINATION</span><strong>{examCourseName}</strong></div>
+          <div className="exam-counter">{examSubmitted ? `${examScore} / ${examTotal} 分` : `${examAnsweredCount} / ${examQuestionCount} 已作答`}</div>
         </header>
         <div className="exam-layout">
           <section className="exam-card">
             {examSubmitted && (
               <div className="exam-result" role="status">
                 <span>EXAM RESULT</span>
-                <strong>{examScore}<i>/100</i></strong>
-                <p>答对 {examFullyCorrect} 题。每题 2 分；多选必须完全选对才得分。</p>
-                <button className="primary-button" onClick={startExam}>再来一套</button>
+                <strong>{examScore}<i>/{examTotal}</i></strong>
+                <p>答对 {examFullyCorrect} 题。每题 {examPoints} 分；答案必须完全正确才得分。</p>
+                <button className="primary-button" onClick={() => startExam(examCourse)}>再来一套</button>
               </div>
             )}
             <div className="question-meta">
               <span className={`type-badge type-${examQuestion.type}`}>{TYPE_NAMES[examQuestion.type as QuestionType]}</span>
-              <span>第 {examCurrent + 1} / 50 题</span>
+              <span>第 {examCurrent + 1} / {examQuestionCount} 题</span>
               <span className="exam-source">{examQuestion.sectionTitle}</span>
             </div>
-            <div className="question-progress" aria-hidden="true"><span style={{ width: `${((examCurrent + 1) / 50) * 100}%` }} /></div>
+            <div className="question-progress" aria-hidden="true"><span style={{ width: `${((examCurrent + 1) / examQuestionCount) * 100}%` }} /></div>
             <h1>{examQuestion.prompt}</h1>
             <div className="options-list" role="group" aria-label="考试答案选项">
               {examQuestion.options.map((option) => {
@@ -445,14 +562,14 @@ export default function Home() {
             {examSubmitted && (
               <div className={`feedback ${examQuestionCorrect ? "feedback-correct" : "feedback-wrong"}`}>
                 <div className="feedback-icon">{examQuestionCorrect ? "✓" : "×"}</div>
-                <div><strong>{examQuestionCorrect ? "本题得 2 分" : "本题得 0 分"}</strong><p>标准答案：{examQuestion.answer.join("、")}</p></div>
+                <div><strong>{examQuestionCorrect ? `本题得 ${examPoints} 分` : "本题得 0 分"}</strong><p>标准答案：{examQuestion.answer.join("、")}</p></div>
               </div>
             )}
             <footer className="question-footer exam-footer">
               <button className="previous-button" onClick={() => setExamCurrent((previous) => Math.max(0, previous - 1))} disabled={examCurrent === 0}>上一题</button>
               <span>{examSubmitted ? "可查看全部答案" : "作答会在本试卷内暂存"}</span>
-              {examCurrent === 49 ? (
-                examSubmitted ? <button className="primary-button" onClick={() => setView("home")}>返回首页</button> : <button className="primary-button" onClick={submitExam}>交卷并评分</button>
+              {examCurrent === examQuestionCount - 1 ? (
+                examSubmitted ? <button className="primary-button" onClick={() => setView(examHomeView)}>返回首页</button> : <button className="primary-button" onClick={submitExam}>交卷并评分</button>
               ) : <button className="primary-button" onClick={() => setExamCurrent((previous) => previous + 1)}>下一题</button>}
             </footer>
           </section>
@@ -481,7 +598,7 @@ export default function Home() {
               <div className="brand-name">MELON 题室</div>
               <div className="brand-subtitle">毛概 · 2023 版</div>
             </div>
-            <button className="home-link" onClick={() => { setSidebarOpen(false); setView("home"); }}>首页</button>
+            <button className="home-link" onClick={() => { setSidebarOpen(false); setView(fluidMode ? "fluid-home" : "home"); }}>首页</button>
           <button className="sidebar-close" aria-label="关闭题库目录" onClick={() => setSidebarOpen(false)}>×</button>
         </div>
 
@@ -507,7 +624,7 @@ export default function Home() {
         <nav className="chapter-nav" aria-label="章节目录">
           <div className="nav-label">{favoriteMode ? "收藏练习" : chapterList.length ? navLabel : "题库概览"}</div>
           {!favoriteMode && chapterList.length ? chapterList.map((chapter) => {
-            const completed = (data.questions as Question[]).filter((item) => item.section === chapter.id && progress.answered.includes(item.id)).length;
+            const completed = ALL_QUESTIONS.filter((item) => item.section === chapter.id && progress.answered.includes(item.id)).length;
             return (
               <button key={chapter.id} className={section === chapter.id ? "chapter-active" : ""} onClick={() => { restartView(); setFavoriteMode(false); setSection(chapter.id); setSidebarOpen(false); }}>
                 <span className="chapter-copy"><strong>{chapter.label}</strong><small>{chapter.title}</small></span>
